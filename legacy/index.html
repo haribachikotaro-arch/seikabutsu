@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>成果物投稿・プレビュー | DataDreamers</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-stone-100 text-stone-800 font-sans antialiased min-h-screen pb-20">
+
+  <!-- ヘッダー -->
+  <header class="bg-white border-b border-stone-200 sticky top-0 z-10">
+    <div class="max-w-4xl mx-auto px-4 h-14 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <span class="font-bold text-base tracking-tight text-stone-900">DataDreamers</span>
+        <span class="text-xs text-stone-400">|</span>
+        <span class="text-xs font-medium text-stone-600">成果物投稿ポータル</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-4xl mx-auto px-4 pt-8 space-y-12">
+    
+    <!-- 1. 投稿フォームエリア -->
+    <section class="bg-white border border-stone-200 rounded-lg p-6 sm:p-8 shadow-sm space-y-6">
+      <div class="border-b border-stone-100 pb-4">
+        <h1 class="text-lg font-bold text-stone-900">記事の作成・編集</h1>
+        <p class="text-xs text-stone-500 mt-1">作品の情報と、すでに公開しているアプリのURLを入力してください。</p>
+      </div>
+
+      <!-- エラー表示領域 -->
+      <div id="errorNotice" class="hidden p-4 bg-red-50 border border-red-200 rounded text-red-700 text-xs space-y-1"></div>
+
+      <form id="workForm" class="space-y-6" onsubmit="return false;">
+        
+        <!-- 作品名 & スラグ -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="space-y-1">
+            <label class="block text-xs font-bold text-stone-700">作品名 <span class="text-red-500">*</span></label>
+            <input type="text" id="titleInput" maxlength="120" placeholder="例: AI対話型データ分析ツール" class="w-full px-3 py-2 border border-stone-300 rounded text-sm focus:outline-none focus:border-stone-800" required>
+            <p class="text-[10px] text-stone-400">1〜120文字</p>
+          </div>
+
+          <div class="space-y-1">
+            <label class="block text-xs font-bold text-stone-700">URL用の識別名 (スラグ) <span class="text-red-500">*</span></label>
+            <div class="flex gap-2">
+              <input type="text" id="slugInput" maxlength="100" placeholder="ai-data-analysis" class="flex-1 px-3 py-2 border border-stone-300 rounded text-sm focus:outline-none focus:border-stone-800" required>
+              <button type="button" id="genSlugBtn" class="px-3 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-medium rounded border border-stone-300 transition">自動生成</button>
+            </div>
+            <p class="text-[10px] text-stone-400">半角英数字とハイフンのみ</p>
+          </div>
+        </div>
+
+        <!-- 概要 -->
+        <div class="space-y-1">
+          <label class="block text-xs font-bold text-stone-700">作品の概要 <span class="text-red-500">*</span></label>
+          <input type="text" id="descInput" maxlength="240" placeholder="CSVを読み込ませるだけで自動でグラフ化と考察を行ってくれるアプリです。" class="w-full px-3 py-2 border border-stone-300 rounded text-sm focus:outline-none focus:border-stone-800" required>
+          <p class="text-[10px] text-stone-400">1〜240文字（一覧やカード表示用）</p>
+        </div>
+
+        <!-- 詳しい説明 -->
+        <div class="space-y-1">
+          <label class="block text-xs font-bold text-stone-700">詳しい説明 <span class="text-red-500">*</span></label>
+          <textarea id="contentInput" rows="6" placeholder="開発の背景、使い方、工夫した点などを詳しく書いてください。" class="w-full px-3 py-2 border border-stone-300 rounded text-sm focus:outline-none focus:border-stone-800" required></textarea>
+        </div>
+
+        <!-- アプリURL & GitHub -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="space-y-1">
+            <label class="block text-xs font-bold text-stone-700">公開アプリのURL <span class="text-red-500">*</span></label>
+            <input type="url" id="appUrlInput" placeholder="https://example.vercel.app" class="w-full px-3 py-2 border border-stone-300 rounded text-sm focus:outline-none focus:border-stone-800" required>
+            <p class="text-[10px] text-stone-400">https:// から始まるアドレス</p>
+          </div>
+
+          <div class="space-y-1">
+            <label class="block text-xs font-bold text-stone-700">ソースコードURL (GitHub等)</label>
+            <input type="url" id="repoUrlInput" placeholder="https://github.com/username/repository" class="w-full px-3 py-2 border border-stone-300 rounded text-sm focus:outline-none focus:border-stone-800">
+          </div>
+        </div>
+
+        <!-- 画像 & 制作者 -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="space-y-1">
+            <label class="block text-xs font-bold text-stone-700">アイキャッチ画像URL <span class="text-red-500">*</span></label>
+            <input type="url" id="eyecatchInput" placeholder="https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=800" class="w-full px-3 py-2 border border-stone-300 rounded text-sm focus:outline-none focus:border-stone-800" required>
+          </div>
+
+          <div class="space-y-1">
+            <label class="block text-xs font-bold text-stone-700">制作者名 <span class="text-red-500">*</span></label>
+            <input type="text" id="authorInput" placeholder="山田 太郎" class="w-full px-3 py-2 border border-stone-300 rounded text-sm focus:outline-none focus:border-stone-800" required>
+          </div>
+        </div>
+
+        <!-- 技術スタック & セレクト項目 -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div class="space-y-1">
+            <label class="block text-xs font-bold text-stone-700">使用技術 (カンマ区切り) <span class="text-red-500">*</span></label>
+            <input type="text" id="techInput" placeholder="Next.js, Python, Cloudflare" class="w-full px-3 py-2 border border-stone-300 rounded text-sm focus:outline-none focus:border-stone-800" required>
+          </div>
+
+          <div class="space-y-1">
+            <label class="block text-xs font-bold text-stone-700">バックエンドの種類 <span class="text-red-500">*</span></label>
+            <select id="backendSelect" class="w-full px-3 py-2 border border-stone-300 rounded text-sm bg-white focus:outline-none focus:border-stone-800">
+              <option value="なし">なし</option>
+              <option value="必要時だけ動作">必要時だけ動作</option>
+              <option value="常時起動">常時起動</option>
+              <option value="外部API">外部API</option>
+              <option value="ローカルのみ">ローカルのみ</option>
+            </select>
+          </div>
+
+          <div class="space-y-1">
+            <label class="block text-xs font-bold text-stone-700">表示方法 <span class="text-red-500">*</span></label>
+            <select id="displayModeSelect" class="w-full px-3 py-2 border border-stone-300 rounded text-sm bg-white focus:outline-none focus:border-stone-800">
+              <option value="iframe">画面内埋め込み＋別タブ</option>
+              <option value="linkOnly">別タブで開くのみ</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- デモ動画 -->
+        <div class="space-y-1">
+          <label class="block text-xs font-bold text-stone-700">紹介動画URL</label>
+          <input type="url" id="demoVideoInput" placeholder="https://youtube.com/watch?v=..." class="w-full px-3 py-2 border border-stone-300 rounded text-sm focus:outline-none focus:border-stone-800">
+        </div>
+
+        <!-- 送信ボタン群 -->
+        <div class="pt-4 border-t border-stone-200 flex flex-wrap items-center justify-between gap-3">
+          <button type="button" id="previewBtn" class="px-5 py-2 bg-stone-100 hover:bg-stone-200 text-stone-800 text-xs font-bold rounded border border-stone-300 transition">
+            下部のプレビューを更新
+          </button>
+          
+          <div class="flex gap-3">
+            <button type="button" id="draftBtn" class="px-5 py-2 border border-stone-300 text-stone-700 text-xs font-bold rounded hover:bg-stone-50 transition">
+              下書き保存
+            </button>
+            <button type="button" id="submitBtn" class="px-5 py-2 bg-stone-900 hover:bg-stone-800 text-white text-xs font-bold rounded transition">
+              公開申請を送信する
+            </button>
+          </div>
+        </div>
+
+      </form>
+    </section>
+
+    <!-- 2. ブログ記事風プレビューエリア (Ci-enスタイル) -->
+    <section class="space-y-3">
+      <div class="flex items-center justify-between px-1">
+        <span class="text-xs font-bold text-stone-500">公開ページの表示プレビュー</span>
+        <span class="text-xs text-stone-400 font-mono">/works/<span id="previewSlugPath">ai-data-analysis</span></span>
+      </div>
+
+      <!-- 記事カード本文 -->
+      <article class="bg-white border border-stone-200 rounded-lg overflow-hidden shadow-sm">
+        
+        <!-- 投稿者ヘッダー情報（Ci-en風） -->
+        <div class="p-6 border-b border-stone-100 flex items-center justify-between bg-stone-50/50">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-full bg-stone-800 text-white flex items-center justify-center font-bold text-sm" id="prevAvatar">
+              山
+            </div>
+            <div>
+              <div class="text-sm font-bold text-stone-900" id="prevAuthor">山田 太郎</div>
+              <div class="text-[11px] text-stone-400">成果物投稿メンバー</div>
+            </div>
+          </div>
+          <span class="text-xs bg-stone-200 text-stone-700 px-2.5 py-1 rounded font-medium">公開プレビュー</span>
+        </div>
+
+        <div class="p-6 sm:p-8 space-y-6">
+          
+          <!-- タイトル＆概要 -->
+          <div class="space-y-3">
+            <h1 id="prevTitle" class="text-2xl sm:text-3xl font-extrabold text-stone-900 leading-snug">
+              AI対話型データ分析ツール
+            </h1>
+            <p id="prevDesc" class="text-sm text-stone-600 leading-relaxed">
+              CSVを読み込ませるだけで自動でグラフ化と考察を行ってくれるアプリです。
+            </p>
+          </div>
+
+          <!-- アイキャッチ画像 -->
+          <div class="rounded-lg overflow-hidden border border-stone-200 bg-stone-100 max-h-[400px]">
+            <img id="prevEyecatch" src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=1200" alt="アイキャッチ" class="w-full h-full object-cover">
+          </div>
+
+          <!-- Webアプリ起動枠 (ゲーム・アプリ埋め込み機能エリア) -->
+          <div class="bg-stone-50 border border-stone-200 rounded-lg p-5 space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 class="text-sm font-bold text-stone-900">Webアプリを試す</h3>
+                <p class="text-xs text-stone-500 mt-0.5">ブラウザ上でそのまま画面を操作できます。</p>
+              </div>
+
+              <div class="flex items-center gap-2">
+                <button type="button" id="launchBtn" class="px-4 py-2 bg-stone-900 hover:bg-stone-800 text-white text-xs font-bold rounded transition flex items-center gap-1.5">
+                  ▶ アプリを起動する
+                </button>
+                <a id="openTabBtn" href="https://example.vercel.app" target="_blank" rel="noopener noreferrer" class="px-4 py-2 bg-white border border-stone-300 hover:bg-stone-100 text-stone-800 text-xs font-bold rounded transition">
+                  別のタブで開く ↗
+                </a>
+              </div>
+            </div>
+
+            <!-- 動的iframe挿入コンテナ -->
+            <div id="frameStage" class="hidden space-y-2 pt-2">
+              <div class="flex items-center justify-between text-xs text-stone-500 bg-stone-200 px-3 py-1.5 rounded-t">
+                <span id="frameStatus" class="font-medium">ステータス: 読み込み中...</span>
+                <button id="closeFrameBtn" type="button" class="font-bold hover:text-stone-900">画面を閉じる ✕</button>
+              </div>
+              <div id="frameContainer" class="w-full aspect-video bg-black rounded-b overflow-hidden border border-stone-300"></div>
+            </div>
+          </div>
+
+          <!-- 使用技術 & 属性タグ -->
+          <div class="pt-2 border-t border-stone-100 flex flex-wrap gap-6 text-xs text-stone-600">
+            <div>
+              <span class="text-stone-400 block text-[10px] uppercase font-bold mb-1">使用技術</span>
+              <div id="prevTechTags" class="flex flex-wrap gap-1.5">
+                <span class="px-2 py-0.5 bg-stone-100 text-stone-700 rounded border border-stone-200">Next.js</span>
+              </div>
+            </div>
+
+            <div>
+              <span class="text-stone-400 block text-[10px] uppercase font-bold mb-1">バックエンド動作</span>
+              <span id="prevBackend" class="font-medium text-stone-800">なし</span>
+            </div>
+
+            <div id="repoWrapper">
+              <span class="text-stone-400 block text-[10px] uppercase font-bold mb-1">ソースコード</span>
+              <a id="repoLink" href="#" target="_blank" rel="noopener noreferrer" class="text-stone-800 underline font-medium hover:text-black">GitHubリポジトリを開く ↗</a>
+            </div>
+          </div>
+
+          <!-- 詳しい説明本文 -->
+          <div class="pt-6 border-t border-stone-100 space-y-2">
+            <h3 class="text-xs font-bold text-stone-400 uppercase tracking-wider">作品の詳細・説明</h3>
+            <div id="prevContent" class="text-sm text-stone-800 leading-relaxed whitespace-pre-wrap">開発の背景、使い方、工夫した点などを詳しく書いてください。</div>
+          </div>
+
+        </div>
+
+      </article>
+    </section>
+
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
