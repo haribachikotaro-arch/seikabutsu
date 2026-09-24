@@ -25,14 +25,22 @@ const date = (s: string) =>
         .replaceAll("/", ".")
     : "—";
 const arrow = <span aria-hidden="true">↗</span>;
+function canEmbed(entry: Entry) {
+  if (entry.displayMode !== "iframe" || !entry.appUrl) return false;
+  if (entry.appUrl.startsWith("/demos/")) return true;
+  try {
+    const origins = (process.env.NEXT_PUBLIC_EMBED_ORIGINS || "")
+      .split(",")
+      .map((origin) => origin.trim().replace(/\/$/, ""))
+      .filter(Boolean);
+    return origins.includes(new URL(entry.appUrl).origin);
+  } catch {
+    return false;
+  }
+}
 function Mark() {
   return (
-    <span className="mark" aria-hidden="true">
-      <i />
-      <i />
-      <i />
-      <i />
-    </span>
+    <img className="mark" src="/favicon.png" alt="" aria-hidden="true" />
   );
 }
 function Cover({
@@ -155,7 +163,7 @@ function Workspace({
       <a className="skip" href="#main">
         本文へ移動
       </a>
-      <header className="header wrap">
+      <div className="site-header"><header className="header wrap">
         <Link className="brand" href="/" aria-label="DataDreamers トップページ">
           <Mark />
           <span>
@@ -186,7 +194,7 @@ function Workspace({
           {member ? "投稿スタジオ" : "メンバーログイン"} <span>↗</span>
         </Link>
         {!demo && signedIn && <UserButton />}
-      </header>
+      </header></div>
       <main id="main" className={"wrap " + (privatePage ? "workspace" : "")}>
         {demo && (
           <div className="sample-note">
@@ -352,15 +360,17 @@ function Workspace({
           </div>
         )}
       </main>
-      <footer className="footer wrap">
-        <Link className="brand footer-brand" href="/">
-          <Mark />
-          DataDreamers
-        </Link>
-        <p>つくって、試して、またつくる。</p>
-        <span>© {new Date().getFullYear()} DataDreamers</span>
-        <Link href="/studio">メンバーの投稿はこちら ↗</Link>
-      </footer>
+      <div className="site-footer"><footer className="footer wrap">
+        <div className="footer-top">
+          <Link className="brand footer-brand" href="/"><Mark />Data Dreamers</Link>
+          <nav className="footer-links" aria-label="フッターナビゲーション">
+            <div><Link href="/about">About</Link><Link href="/about">私たちについて</Link><Link href="/works">成果物</Link></div>
+            <div><Link href="/articles">Activities</Link><Link href="/articles">活動記事</Link><Link href="/studio">投稿スタジオ</Link></div>
+            <div><a href="https://data-dreamers.vercel.app/for-new-dreamers">New Students</a><Link href="/login">メンバーログイン</Link></div>
+          </nav>
+        </div>
+        <div className="footer-bottom">© {new Date().getFullYear()} Data Dreamers. All Rights Reserved.</div>
+      </footer></div>
     </>
   );
 }
@@ -693,7 +703,7 @@ function Launch({ entry: e }: { entry: Entry }) {
       </div>
       <p>外部アプリの稼働状況によっては、表示に時間がかかることがあります。</p>
       <div className="actions">
-        {e.embedStatus === "allowed" && e.displayMode === "iframe" && (
+        {canEmbed(e) && (
           <button
             className="button primary"
             onClick={() => {
@@ -703,7 +713,7 @@ function Launch({ entry: e }: { entry: Entry }) {
               );
             }}
           >
-            {active ? "画面を閉じる ×" : "この作品を起動する ↗"}
+            {active ? "画面を閉じる ×" : "このページで開く ↗"}
           </button>
         )}
         <a
@@ -742,13 +752,15 @@ function Launch({ entry: e }: { entry: Entry }) {
           <iframe
             src={e.appUrl}
             title={e.title + "の実行画面"}
-            sandbox="allow-scripts allow-forms allow-popups"
+            sandbox={canEmbed(e)
+              ? "allow-scripts allow-forms allow-popups allow-downloads allow-same-origin"
+              : "allow-scripts allow-forms allow-popups"}
             allowFullScreen
             referrerPolicy="no-referrer"
-            style={{ height: `${frameHeight}px`, zoom: frameZoom / 100 }}
+            style={{ height: `${frameHeight}px`, width: `${10000 / frameZoom}%`, transform: `scale(${frameZoom / 100})`, transformOrigin: "top left" }}
             onLoad={() =>
               setMessage(
-                "読み込み完了。必要に応じて表示サイズや拡大率を調整できます。",
+                "画面が表示されない場合は、別のタブで開いてください。表示サイズ・拡大率を調整できます。",
               )
             }
             onError={() =>

@@ -7,3 +7,6 @@ node_modules/
 .tools/
 tmp/
 tsconfig.tsbuildinfo
+
+node_modules*
+*.broken

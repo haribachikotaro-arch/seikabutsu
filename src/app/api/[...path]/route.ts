@@ -292,7 +292,7 @@ async function handle(
           : existing?.publishedAt || "",
       version: (existing?.version || 0) + 1,
       embedStatus:
-        entry.appUrl.startsWith("/demos/") && entry.displayMode === "iframe"
+        entry.displayMode === "iframe" && (entry.appUrl.startsWith("/demos/") || (() => { try { return (process.env.NEXT_PUBLIC_EMBED_ORIGINS || "").split(",").includes(new URL(entry.appUrl).origin); } catch { return false; } })())
           ? "allowed"
           : "linkOnly",
     };

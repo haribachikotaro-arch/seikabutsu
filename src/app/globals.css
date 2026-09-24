@@ -1509,3 +1509,35 @@ fieldset {
     padding-left: 0 !important;
   }
 }
+/* Data Dreamers shared brand */
+:root { --paper:#f5fcff; --ink:#122d46; --muted:#526e81; --line:#d3e6ee; --accent:#087ca5; --soft:#eaf6fb; }
+.site-header,.site-footer { background:linear-gradient(to bottom right,#0e416b,#000029); color:#fff; }
+.header { height:100px; border:0; }
+.header .brand small { color:#c9e7f1; }
+.mark { display:block; width:64px; height:64px; flex:0 0 64px; object-fit:contain; border:0; border-radius:0; box-shadow:none; background:transparent; }
+.header a:hover,.footer a:hover { color:#8be9ef; }
+.header nav a[aria-current] { border-color:#8be9ef; }
+.header .studio-link { border-color:#51748b; }
+.header .studio-link span { color:#8be9ef; }
+.site-footer { margin-top:75px; }
+.footer { display:block; margin-top:0; padding-top:48px; padding-bottom:26px; border:0; }
+.footer-top { display:flex; justify-content:space-between; gap:40px; }
+.footer .mark { transform:none; margin:0; }
+.footer-brand { font-size:24px; align-self:flex-start; }
+.footer-links { display:flex; gap:48px; }
+.footer-links > div { display:flex; flex-direction:column; gap:10px; }
+.footer-links a { font-size:12px; color:#d6e7ee; }
+.footer-links a:first-child { color:#fff; font-size:17px; margin-bottom:5px; }
+.footer-bottom { border-top:1px solid #42637d; padding-top:22px; margin-top:36px; color:#d6e7ee; font-size:11px; }
+.embed-viewport { overflow:auto; margin-top:12px; width:100%; background:#fff; }
+.launch .embed-viewport iframe { display:block; max-height:none; margin-top:0; }
+.button.primary:hover { background:#065d7f; }
+@media(max-width:700px) {
+ .header { height:auto; padding-top:16px; }
+ .header .brand { font-size:18px; }
+ .header .mark { width:56px; height:56px; flex-basis:56px; }
+ .header nav { border-color:#42637d; }
+ .footer-top { flex-direction:column; gap:30px; }
+ .footer-links { flex-wrap:wrap; gap:28px; }
+ .footer-brand { font-size:22px; }
+}
