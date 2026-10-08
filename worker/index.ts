@@ -42,19 +42,28 @@ const digest = async (s: string) =>
     .map((n) => n.toString(16).padStart(2, "0"))
     .join("");
 export function safeHtml(markdown: string) {
-  return sanitizeHtml(marked.parse(markdown, { async: false }), {
+  const source = /<(p|h[1-5]|figure|img|ul|ol|blockquote|strong|em|br)\b/i.test(markdown)
+    ? markdown
+    : marked.parse(markdown, { async: false });
+  return sanitizeHtml(source, {
     allowedTags: [
       "p",
+      "h1",
       "h2",
       "h3",
       "h4",
+      "h5",
       "strong",
       "em",
+      "u",
+      "s",
       "ul",
       "ol",
       "li",
       "a",
       "img",
+      "figure",
+      "figcaption",
       "blockquote",
       "pre",
       "code",
@@ -63,8 +72,10 @@ export function safeHtml(markdown: string) {
     ],
     allowedAttributes: {
       a: ["href", "title", "rel"],
-      img: ["src", "alt", "title"],
+      img: ["src", "alt", "title", "width", "height"],
+      figure: ["style"],
     },
+    allowedStyles: { figure: { textAlign: [/^(left|center|right)$/] } },
     allowedSchemes: ["https"],
     allowProtocolRelative: false,
     transformTags: {
@@ -209,6 +220,7 @@ async function dispatch(req: Request, env: Env) {
     }
     return json({
       entries: parts[1] ? visible.filter((e) => e.kind === parts[1]) : visible,
+      allowlist: env.EMBED_ORIGINS.split(",").map((origin) => origin.trim().replace(/\/$/, "")).filter(Boolean),
     });
   }
   const user = await identity(req, env);
@@ -325,6 +337,11 @@ async function dispatch(req: Request, env: Env) {
         }>()
     : null;
   if (id && !index) throw new ApiError(404, "投稿が見つかりません。");
+  if (req.method === "DELETE" && id) {
+    if (member.role !== "admin") throw new ApiError(403, "投稿の削除は管理者のみ実行できます。");
+    await env.DB.prepare("DELETE FROM posts WHERE id=? AND kind=?").bind(id, kind).run();
+    return json({ ok: true });
+  }
   if (index && index.owner !== member.id && member.role !== "admin")
     throw new ApiError(403, "他のメンバーの投稿は編集できません。");
   if (req.method === "GET" && id)

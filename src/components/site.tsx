@@ -1,9 +1,12 @@
 "use client";
 import Link from "next/link";
+import OfficialPage, { OfficialIntro } from "./official";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { SignIn, SignUp, useAuth, UserButton } from "@clerk/nextjs";
 import ReactMarkdown from "react-markdown";
+import { marked } from "marked";
+import sanitizeHtml from "sanitize-html";
 import { seed } from "@/lib/seed";
 import {
   type Entry,
@@ -25,22 +28,37 @@ const date = (s: string) =>
         .replaceAll("/", ".")
     : "—";
 const arrow = <span aria-hidden="true">↗</span>;
-function canEmbed(entry: Entry) {
-  if (entry.displayMode !== "iframe" || !entry.appUrl) return false;
+function canEmbed(entry: Entry, allowlist: string[] = []) {
+  // An administrator's allowlist decision is the source of truth for the in-page launcher.
+  // Older posts may still have displayMode="linkOnly" from before the allowlist UI existed.
+  if (!entry.appUrl) return false;
   if (entry.appUrl.startsWith("/demos/")) return true;
   try {
-    const origins = (process.env.NEXT_PUBLIC_EMBED_ORIGINS || "")
+    const origins = [...allowlist, ...(process.env.NEXT_PUBLIC_EMBED_ORIGINS || "")
       .split(",")
       .map((origin) => origin.trim().replace(/\/$/, ""))
-      .filter(Boolean);
+      .filter(Boolean)];
     return origins.includes(new URL(entry.appUrl).origin);
   } catch {
     return false;
   }
 }
+function RichBody({ content }: { content: string }) {
+  if (!/<(p|h[1-5]|figure|img|ul|ol|blockquote|strong|em|br)\b/i.test(content))
+    return <ReactMarkdown>{content}</ReactMarkdown>;
+  const html = sanitizeHtml(content, {
+    allowedTags: ["h1", "h2", "h3", "h4", "h5", "p", "br", "strong", "b", "em", "i", "u", "s", "ul", "ol", "li", "a", "blockquote", "pre", "code", "figure", "img", "figcaption", "hr"],
+    allowedAttributes: { a: ["href", "target", "rel"], img: ["src", "alt", "width", "height"], figure: ["style"] },
+    allowedStyles: { figure: { textAlign: [/^(left|center|right)$/] } },
+    allowedSchemes: ["https", "http", "mailto"],
+    allowedSchemesByTag: { img: ["https"] },
+    allowProtocolRelative: false,
+  });
+  return <div dangerouslySetInnerHTML={{ __html: html }} />;
+}
 function Mark() {
   return (
-    <img className="mark" src="/favicon.png" alt="" aria-hidden="true" />
+    <img className="mark" src="/images/official/icon-removebg.png" alt="" aria-hidden="true" />
   );
 }
 function Cover({
@@ -97,6 +115,7 @@ function Workspace({
 }) {
   const router = useRouter();
   const [entries, setEntries] = useState<Entry[]>(demo ? seed : []);
+  const [allowlist, setAllowlist] = useState<string[]>([]);
   const [member, setMember] = useState<Member | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(!demo);
@@ -130,6 +149,7 @@ function Workspace({
     try {
       const result = await request("public");
       setEntries(result.entries);
+      setAllowlist(result.allowlist || []);
       setError("");
     } catch (e) {
       setError((e as Error).message);
@@ -146,6 +166,8 @@ function Workspace({
   const section = path[0] || "home";
   const privatePage = ["studio", "admin"].includes(section);
   const published = entries.filter((e) => e.status === "published");
+  const [showTop, setShowTop] = useState(false);
+  useEffect(() => { const onScroll = () => setShowTop(window.scrollY > 420); window.addEventListener("scroll", onScroll, { passive: true }); onScroll(); return () => window.removeEventListener("scroll", onScroll); }, []);
   async function enter(role: "editor" | "admin") {
     try {
       const result = await request("demo-session", {
@@ -189,6 +211,9 @@ function Workspace({
           >
             私たちについて
           </Link>
+          <Link href="/for-new-dreamers">新入生の方へ</Link>
+          <Link href="/news">お知らせ</Link>
+          <Link href="/contact">お問い合わせ</Link>
         </nav>
         <Link className="studio-link" href={member ? "/studio" : "/login"}>
           {member ? "投稿スタジオ" : "メンバーログイン"} <span>↗</span>
@@ -215,14 +240,15 @@ function Workspace({
           </p>
         ) : section === "home" ? (
           <Home entries={published} />
-        ) : section === "about" ? (
-          <About />
+        ) : ["about", "for-new-dreamers", "news", "contact"].includes(section) ? (
+          <OfficialPage key={section} page={section} />
         ) : section === "works" || section === "articles" ? (
           path[1] ? (
             <Detail
               entry={published.find(
                 (e) => e.kind === section && e.slug === path[1],
               )}
+              allowlist={allowlist}
             />
           ) : (
             <Listing
@@ -366,11 +392,12 @@ function Workspace({
           <nav className="footer-links" aria-label="フッターナビゲーション">
             <div><Link href="/about">About</Link><Link href="/about">私たちについて</Link><Link href="/works">成果物</Link></div>
             <div><Link href="/articles">Activities</Link><Link href="/articles">活動記事</Link><Link href="/studio">投稿スタジオ</Link></div>
-            <div><a href="https://data-dreamers.vercel.app/for-new-dreamers">New Students</a><Link href="/login">メンバーログイン</Link></div>
+            <div><Link href="/for-new-dreamers">New Students</Link><Link href="/news">お知らせ</Link><Link href="/contact">お問い合わせ</Link><Link href="/login">メンバーログイン</Link></div>
           </nav>
         </div>
         <div className="footer-bottom">© {new Date().getFullYear()} Data Dreamers. All Rights Reserved.</div>
       </footer></div>
+      {showTop && <button className="back-to-top" aria-label="ページの先頭へ戻る" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>↑<span>TOP</span></button>}
     </>
   );
 }
@@ -380,6 +407,7 @@ function Home({ entries }: { entries: Entry[] }) {
   const featured = works[0];
   return (
     <>
+      <OfficialIntro />
       <div className="intro">
         <h1>学生がつくったものと、その過程。</h1>
         <p>
@@ -616,9 +644,11 @@ function Listing({ kind, entries }: { kind: Kind; entries: Entry[] }) {
 function Detail({
   entry: e,
   preview = false,
+  allowlist = [],
 }: {
   entry?: Entry;
   preview?: boolean;
+  allowlist?: string[];
 }) {
   if (!e)
     return (
@@ -668,13 +698,13 @@ function Detail({
         </div>
       )}
       <div className="prose">
-        <ReactMarkdown>{e.content}</ReactMarkdown>
+        <RichBody content={e.content} />
       </div>
-      {e.kind === "works" && e.appUrl && <Launch entry={e} />}
+      {e.kind === "works" && e.appUrl && <Launch entry={e} allowlist={allowlist} />}
     </article>
   );
 }
-function Launch({ entry: e }: { entry: Entry }) {
+function Launch({ entry: e, allowlist = [] }: { entry: Entry; allowlist?: string[] }) {
   const [active, setActive] = useState(false);
   const [message, setMessage] = useState("");
   const [frameHeight, setFrameHeight] = useState(560);
@@ -703,7 +733,7 @@ function Launch({ entry: e }: { entry: Entry }) {
       </div>
       <p>外部アプリの稼働状況によっては、表示に時間がかかることがあります。</p>
       <div className="actions">
-        {canEmbed(e) && (
+        {canEmbed(e, allowlist) && (
           <button
             className="button primary"
             onClick={() => {
@@ -752,7 +782,7 @@ function Launch({ entry: e }: { entry: Entry }) {
           <iframe
             src={e.appUrl}
             title={e.title + "の実行画面"}
-            sandbox={canEmbed(e)
+            sandbox={canEmbed(e, allowlist)
               ? "allow-scripts allow-forms allow-popups allow-downloads allow-same-origin"
               : "allow-scripts allow-forms allow-popups"}
             allowFullScreen
@@ -769,36 +799,6 @@ function Launch({ entry: e }: { entry: Entry }) {
           />
         </>
       )}
-    </section>
-  );
-}
-function About() {
-  return (
-    <section className="about-page">
-      <div className="eyebrow">学生ITコミュニティ</div>
-      <h1>DataDreamersについて</h1>
-      <h2>
-        身近な「こうだったら」を、
-        <br />
-        自分たちの手で。
-      </h2>
-      <p>
-        DataDreamersは、Webアプリやゲーム、Webサイトなどを制作する学生ITコミュニティ・開発チームです。
-      </p>
-      <p>
-        自分の興味を出発点に、試作品をつくり、仲間に触ってもらう。そこで見つけた課題を持ち帰り、また直す。制作を通じて学んだことを、このサイトで公開していきます。
-      </p>
-      <div className="about-links">
-        <Link href="/works">学生がつくった成果物を見る ↗</Link>
-        <Link href="/articles">制作の過程・活動記事を読む ↗</Link>
-      </div>
-      <h3>メンバーの方へ</h3>
-      <p>
-        活動の記録や制作した作品は、投稿スタジオから登録できます。公開した内容は、そのままサイトに掲載されます。
-      </p>
-      <Link className="button" href="/studio">
-        投稿スタジオへ →
-      </Link>
     </section>
   );
 }
@@ -885,6 +885,8 @@ function Studio({
 }) {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
+  const [allowlist, setAllowlist] = useState<string[]>([]);
+  const [originInput, setOriginInput] = useState("");
   const [filter, setFilter] = useState("all");
   const [query, setQuery] = useState("");
   const [message, setMessage] = useState("");
@@ -896,6 +898,7 @@ function Studio({
         .then((d) => {
           setEntries(d.entries);
           setMembers(d.members || []);
+          setAllowlist(d.allowlist || []);
         })
         .catch((e) => setMessage(e.message)),
     [request, admin],
@@ -929,6 +932,17 @@ function Studio({
       setBusy(false);
     }
   }
+  async function deleteEntry(e: Entry) {
+    if (!confirm(`「${e.title}」を完全に削除しますか？この操作は戻せません。`)) return;
+    setBusy(true);
+    try { await request(`${e.kind}/${e.id}`, { method: "DELETE" }); setMessage("投稿を削除しました。"); await load(); await refresh(); }
+    catch (e) { setMessage((e as Error).message); } finally { setBusy(false); }
+  }
+  async function saveAllowlist(next: string[]) {
+    setBusy(true);
+    try { const d = await request("allowlist", { method: "PATCH", body: JSON.stringify({ origins: next }) }); setAllowlist(d.allowlist); setMessage("許可リストを更新しました。"); }
+    catch (e) { setMessage((e as Error).message); } finally { setBusy(false); }
+  }
   return (
     <>
       <div className="studio-heading">
@@ -961,6 +975,7 @@ function Studio({
           >
             権限管理
           </button>
+          <button aria-pressed={tab === "allowlist"} onClick={() => setTab("allowlist")}>埋め込み許可リスト</button>
         </div>
       )}
       {message && (
@@ -968,7 +983,9 @@ function Studio({
           {message}
         </p>
       )}
-      {tab === "members" ? (
+      {tab === "allowlist" ? (
+        <section className="allowlist-panel"><h2>埋め込み許可リスト</h2><p className="editor-intro">作品をページ内に表示できるHTTPSドメインを管理します。</p><div className="allowlist-add"><input value={originInput} onChange={e => setOriginInput(e.target.value)} placeholder="https://example.com" /><button className="button" disabled={busy || !originInput.trim()} onClick={() => { const v=originInput.trim().replace(/\/$/, ""); if (!allowlist.includes(v)) void saveAllowlist([...allowlist, v]); setOriginInput(""); }}>追加</button></div><ul className="allowlist-list">{allowlist.map(origin => <li key={origin}><code>{origin}</code><button className="text-button" disabled={busy} onClick={() => void saveAllowlist(allowlist.filter(v => v !== origin))}>削除</button></li>)}</ul></section>
+      ) : tab === "members" ? (
         <div className="table-scroll">
           <table>
             <thead>
@@ -1103,6 +1120,7 @@ function Studio({
                                   非公開
                                 </button>
                               )}
+                              {admin && <button disabled={busy} onClick={() => void deleteEntry(e)}>削除</button>}
                             </div>
                           </td>
                         </tr>
@@ -1127,6 +1145,147 @@ function Studio({
     </>
   );
 }
+function RichTextEditor({
+  value,
+  onChange,
+  onUploadImage,
+}: {
+  value: string;
+  onChange: (html: string) => void;
+  onUploadImage: (file: File) => Promise<string | undefined>;
+}) {
+  const editorRef = useRef<HTMLDivElement>(null);
+  const savedRange = useRef<Range | null>(null);
+  const selectedImage = useRef<HTMLImageElement | null>(null);
+  const [imageWidth, setImageWidth] = useState(50);
+  const [imageSelected, setImageSelected] = useState(false);
+  const html = /<(p|h[1-5]|figure|img|ul|ol|blockquote|strong|em|br)\b/i.test(value)
+    ? value
+    : String(marked.parse(value || "", { async: false }));
+
+  useEffect(() => {
+    if (editorRef.current && editorRef.current.innerHTML !== html)
+      editorRef.current.innerHTML = html;
+  }, [html]);
+
+  function rememberSelection() {
+    const selection = window.getSelection();
+    if (selection?.rangeCount && editorRef.current?.contains(selection.anchorNode))
+      savedRange.current = selection.getRangeAt(0).cloneRange();
+  }
+  function restoreSelection() {
+    editorRef.current?.focus();
+    const selection = window.getSelection();
+    if (savedRange.current && selection) {
+      selection.removeAllRanges();
+      selection.addRange(savedRange.current);
+    }
+  }
+  function command(name: string, arg?: string) {
+    restoreSelection();
+    document.execCommand(name, false, arg);
+    if (editorRef.current) onChange(editorRef.current.innerHTML);
+    rememberSelection();
+  }
+  function resizeImage(percent: number) {
+    const image = selectedImage.current;
+    const editor = editorRef.current;
+    if (!image || !editor) return;
+    const width = Math.max(80, Math.round(editor.clientWidth * percent / 100));
+    const naturalWidth = image.naturalWidth || Number(image.getAttribute("width")) || width;
+    const naturalHeight = image.naturalHeight || Number(image.getAttribute("height")) || Math.round(width * .65);
+    const scaledWidth = Math.min(width, naturalWidth);
+    image.setAttribute("width", String(scaledWidth));
+    image.setAttribute("height", String(Math.round(scaledWidth * naturalHeight / naturalWidth)));
+    image.style.width = `${scaledWidth}px`;
+    image.style.height = "auto";
+    setImageWidth(percent);
+    onChange(editor.innerHTML);
+  }
+  async function insertImage(file?: File) {
+    if (!file) return;
+    const url = await onUploadImage(file);
+    if (!url) return;
+    restoreSelection();
+    document.execCommand("insertHTML", false, `<figure style="text-align: left;"><img src="${url}" alt="" width="640" height="400"></figure><p><br></p>`);
+    if (editorRef.current) {
+      const image = editorRef.current.querySelectorAll("img").item(editorRef.current.querySelectorAll("img").length - 1);
+      if (image) {
+        image.onload = () => {
+          const ratio = image.naturalHeight / image.naturalWidth || .65;
+          const width = Math.min(image.naturalWidth || 640, 800);
+          image.setAttribute("width", String(width));
+          image.setAttribute("height", String(Math.round(width * ratio)));
+          onChange(editorRef.current?.innerHTML || "");
+        };
+        selectedImage.current = image;
+        setImageSelected(true);
+      }
+      onChange(editorRef.current.innerHTML);
+    }
+  }
+  function alignImage(alignment: "left" | "center" | "right") {
+    const image = selectedImage.current;
+    const figure = image?.closest("figure");
+    if (figure && editorRef.current) {
+      figure.style.textAlign = alignment;
+      onChange(editorRef.current.innerHTML);
+    }
+  }
+
+  return (
+    <div className="rich-editor">
+      <div className="rich-toolbar" role="toolbar" aria-label="本文の書式">
+        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => command("formatBlock", "<p>")}>本文</button>
+        <button type="button" aria-label="太字" onMouseDown={(e) => e.preventDefault()} onClick={() => command("bold")}><strong>B</strong></button>
+        <button type="button" aria-label="斜体" onMouseDown={(e) => e.preventDefault()} onClick={() => command("italic")}><em>I</em></button>
+        <button type="button" aria-label="下線" onMouseDown={(e) => e.preventDefault()} onClick={() => command("underline")}><u>U</u></button>
+        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => command("formatBlock", "<h2>")}>見出し</button>
+        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => command("insertUnorderedList")}>箇条書き</button>
+        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => { const url = window.prompt("リンク先URL"); if (url) command("createLink", url); }}>リンク</button>
+        <label className="rich-image-button" onMouseDown={rememberSelection}>
+          画像を挿入
+          <input type="file" accept="image/jpeg,image/png,image/webp" onChange={(e) => { void insertImage(e.target.files?.[0]); e.currentTarget.value = ""; }} />
+        </label>
+      </div>
+      {imageSelected && selectedImage.current && (
+        <div className="rich-image-tools" aria-label="画像の配置とサイズ">
+          <span>選択中の画像</span>
+          <button type="button" onClick={() => alignImage("left")}>左</button>
+          <button type="button" onClick={() => alignImage("center")}>中央</button>
+          <button type="button" onClick={() => alignImage("right")}>右</button>
+          <label>幅 {imageWidth}%<input type="range" min="20" max="100" value={imageWidth} onChange={(e) => resizeImage(Number(e.target.value))} /></label>
+          <button type="button" onClick={() => { selectedImage.current = null; setImageSelected(false); }}>選択解除</button>
+        </div>
+      )}
+      <div
+        ref={editorRef}
+        className="rich-editable"
+        contentEditable
+        suppressContentEditableWarning
+        role="textbox"
+        aria-label="本文"
+        aria-multiline="true"
+        onInput={(e) => { onChange(e.currentTarget.innerHTML); rememberSelection(); }}
+        onKeyUp={rememberSelection}
+        onMouseUp={rememberSelection}
+        onClick={(e) => {
+          const image = (e.target as HTMLElement).closest("img") as HTMLImageElement | null;
+          selectedImage.current = image;
+          setImageSelected(!!image);
+          if (image && editorRef.current) {
+            const rect = editorRef.current.getBoundingClientRect();
+            setImageWidth(Math.max(20, Math.min(100, Math.round(image.getBoundingClientRect().width / rect.width * 100))));
+          }
+          rememberSelection();
+        }}
+        onBlur={(e) => onChange(e.currentTarget.innerHTML)}
+      />
+      <p className="hint">画像はmicroCMSメディアに保存されます。画像を選ぶと配置と幅を調整できます。</p>
+    </div>
+  );
+}
+
 function Editor({
   kind,
   id,
@@ -1155,14 +1314,24 @@ function Editor({
   const [section, setSection] = useState("basic");
   const [requestId, setRequestId] = useState("");
   useEffect(() => {
-    if (id)
-      void request(kind + "/" + id)
-        .then((d) => {
-          setEntry(d.entry);
-          setLoaded(true);
-        })
-        .catch((e) => setMessage(e.message));
-  }, [id, kind, request]);
+    setMessage("");
+    setErrors({});
+    setSaved(false);
+    setLoaded(!id);
+    if (!id) {
+      setEntry({ ...emptyEntry(kind), authorName: member.name });
+      return;
+    }
+    void request(kind + "/" + id)
+      .then((d) => {
+        setEntry(d.entry);
+        setLoaded(true);
+      })
+      .catch((e) => {
+        setMessage(e.message);
+        setLoaded(true);
+      });
+  }, [id, kind, member.name, request]);
   useEffect(() => {
     if (!saved) {
       const warn = (e: BeforeUnloadEvent) => {
@@ -1202,6 +1371,25 @@ function Editor({
         ...v,
         [inline ? "content" : "eyecatch"]: (e as Error).message,
       }));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function uploadInlineImage(file: File) {
+    const error = imageError(file);
+    if (error) {
+      setErrors((current) => ({ ...current, content: error }));
+      return;
+    }
+    setBusy(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const result = await request("media", { method: "POST", body: form });
+      return result.url as string;
+    } catch (error) {
+      setErrors((current) => ({ ...current, content: (error as Error).message }));
+      return;
     } finally {
       setBusy(false);
     }
@@ -1405,34 +1593,15 @@ function Editor({
                   )}
                 </div>
                 {field("imageAlt", "画像の説明（代替テキスト）", true, 160)}
-                <div className="format-bar">
-                  <span>本文の書式</span>
-                  {[
-                    ["見出し", "\n## 見出し\n"],
-                    ["太字", "**強調する言葉**"],
-                    ["箇条書き", "\n- 項目\n"],
-                    ["リンク", "[リンクの名前](https://)"],
-                  ].map(([label, text]) => (
-                    <button
-                      key={label}
-                      onClick={() => change("content", entry.content + text)}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                  <label className="inline-upload">
-                    画像を挿入
-                    <input
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp"
-                      onChange={(e) => void upload(e.target.files?.[0], true)}
-                    />
-                  </label>
-                </div>
-                {field("content", "本文", true, 100000, "textarea")}
-                <p className="hint">
-                  Markdownで記述できます。「プレビュー」で見出し・太字・リンク・画像を確認できます。
-                </p>
+                <label className="field rich-content-field">
+                  <span>\u672c\u6587 <small>\u5fc5\u9808</small><em>{entry.content.length} / 100000</em></span>
+                  <RichTextEditor
+                    value={entry.content}
+                    onChange={(html) => change("content", html)}
+                    onUploadImage={uploadInlineImage}
+                  />
+                  <span className={errors.content ? "field-error" : "hint"}>{errors.content || "\u753b\u50cf\u306f\u3001microCMS\u306e\u30e1\u30c7\u30a3\u30a2\u306b\u4fdd\u5b58\u3055\u308c\u307e\u3059\u3002\u672c\u6587\u5185\u306e\u753b\u50cf\u3092\u9078\u3076\u3068\u3001\u914d\u7f6e\u3068\u5e45\u3092\u8abf\u6574\u3067\u304d\u307e\u3059\u3002"}</span>
+                </label>
               </section>
             )}
             {kind === "works" && (section === "tech" || section === "all") && (
