@@ -12,6 +12,7 @@ export type Entry = {
   authorName: string;
   clerkUserId: string;
   category: string;
+  groupName?: string;
   techStack: string[];
   appUrl: string;
   repositoryUrl: string;
@@ -38,6 +39,7 @@ export const emptyEntry = (kind: Kind): Entry => ({
   authorName: "",
   clerkUserId: "",
   category: kind === "works" ? "Webアプリ" : "活動記録",
+  groupName: "",
   techStack: [],
   appUrl: "",
   repositoryUrl: "",
@@ -104,6 +106,8 @@ export function validateEntry(
     errors.content = "本文を入力してください。";
   if (data.content?.length > 100000)
     errors.content = "本文は100,000文字以下で入力してください。";
+  if ((data.groupName?.length || 0) > 80)
+    errors.groupName = "グループ名は80文字以下で入力してください。";
   if (publish && !data.eyecatch)
     errors.eyecatch = "アイキャッチ画像を選んでください。";
   if (

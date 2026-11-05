@@ -1,13 +1,17 @@
 "use client";
 import Link from "next/link";
 import OfficialPage, { OfficialIntro } from "./official";
+import { GroupManager, GroupPages, NewsEditor, NewsPage } from "./groups";
+import AuthenticationLogin from "./authentication-login";
+import AuthenticationSignup from "./authentication-signup";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useCallback, useRef } from "react";
-import { SignIn, SignUp, useAuth, UserButton } from "@clerk/nextjs";
+import { SignIn, useAuth, UserButton } from "@clerk/nextjs";
 import ReactMarkdown from "react-markdown";
 import { marked } from "marked";
 import sanitizeHtml from "sanitize-html";
 import { seed } from "@/lib/seed";
+import { GROUP_SEEDS, type GroupProfile } from "@/lib/group-data";
 import {
   type Entry,
   type Member,
@@ -97,38 +101,36 @@ function Connected(props: {
   demo: boolean;
   localWrite: boolean;
 }) {
-  const { getToken, isSignedIn } = useAuth();
-  return <Workspace {...props} token={getToken} signedIn={!!isSignedIn} />;
+  const { isSignedIn } = useAuth();
+  return <Workspace {...props} signedIn={!!isSignedIn} />;
 }
 function Workspace({
   path,
   demo,
   localWrite,
-  token,
   signedIn,
 }: {
   path: string[];
   demo: boolean;
   localWrite: boolean;
-  token?: () => Promise<string | null>;
   signedIn?: boolean;
 }) {
   const router = useRouter();
   const [entries, setEntries] = useState<Entry[]>(demo ? seed : []);
   const [allowlist, setAllowlist] = useState<string[]>([]);
+  const [groups, setGroups] = useState<GroupProfile[]>(GROUP_SEEDS);
+  const [newsItems, setNewsItems] = useState<Record<string, any>[]>([]);
   const [member, setMember] = useState<Member | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(!demo);
   const request: RequestFn = useCallback(
     async (url, options = {}) => {
-      const jwt = token ? await token() : null;
       const res = await fetch("/api/" + url, {
         ...options,
         headers: {
           ...(options.body instanceof FormData
             ? {}
             : { "Content-Type": "application/json" }),
-          ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}),
           ...options.headers,
         },
       });
@@ -137,19 +139,24 @@ function Workspace({
         throw Object.assign(
           new Error(
             data.message ||
+              (data.error === "authentication_failed"
+                ? "ログイン状態または秘密の暗号を確認してください。"
+                : data.error) ||
               "通信に失敗しました。時間をおいて再試行してください。",
           ),
           { fields: data.fields, status: res.status },
         );
       return data;
     },
-    [token],
+    [],
   );
   const refresh = useCallback(async () => {
     try {
       const result = await request("public");
       setEntries(result.entries);
       setAllowlist(result.allowlist || []);
+      setGroups(result.groups || GROUP_SEEDS);
+      setNewsItems(result.news || []);
       setError("");
     } catch (e) {
       setError((e as Error).message);
@@ -159,6 +166,10 @@ function Workspace({
   }, [request]);
   useEffect(() => {
     void refresh();
+    if (!signedIn) {
+      setMember(null);
+      return;
+    }
     void request("me")
       .then((d) => setMember(d.member))
       .catch(() => setMember(null));
@@ -168,17 +179,12 @@ function Workspace({
   const published = entries.filter((e) => e.status === "published");
   const [showTop, setShowTop] = useState(false);
   useEffect(() => { const onScroll = () => setShowTop(window.scrollY > 420); window.addEventListener("scroll", onScroll, { passive: true }); onScroll(); return () => window.removeEventListener("scroll", onScroll); }, []);
-  async function enter(role: "editor" | "admin") {
+  async function enterAdminDemo() {
     try {
-      const result = await request("demo-session", {
-        method: "POST",
-        body: JSON.stringify({ role }),
-      });
+      const result = await request("demo-session", { method: "POST", body: JSON.stringify({ role: "admin" }) });
       setMember(result.member);
-      router.push("/studio");
-    } catch (e) {
-      setError((e as Error).message);
-    }
+      router.push("/admin");
+    } catch (e) { setError((e as Error).message); }
   }
   return (
     <>
@@ -199,6 +205,7 @@ function Workspace({
           >
             成果物
           </Link>
+          <Link aria-current={section === "groups" ? "page" : undefined} href="/groups">グループ</Link>
           <Link
             aria-current={section === "articles" ? "page" : undefined}
             href="/articles"
@@ -240,7 +247,11 @@ function Workspace({
           </p>
         ) : section === "home" ? (
           <Home entries={published} />
-        ) : ["about", "for-new-dreamers", "news", "contact"].includes(section) ? (
+        ) : section === "groups" ? (
+          <GroupPages groups={groups} entries={published} path={path[1]} />
+        ) : section === "news" ? (
+          <NewsPage items={newsItems} />
+        ) : ["about", "for-new-dreamers", "contact"].includes(section) ? (
           <OfficialPage key={section} page={section} />
         ) : section === "works" || section === "articles" ? (
           path[1] ? (
@@ -274,39 +285,33 @@ function Workspace({
                 </div>
                 {localWrite && (
                   <div className="auth-actions">
-                    <button
-                      className="button primary"
-                      onClick={() => void enter("editor")}
-                    >
-                      投稿者として試す →
-                    </button>
-                    <button
-                      className="button"
-                      onClick={() => void enter("admin")}
-                    >
-                      管理者として試す
-                    </button>
+                    <p className="hint">管理者ログインはAuthentication_System-mainへ移行中です。</p>
+                    <button className="button primary" onClick={() => void enterAdminDemo()}>管理者として試す</button>
                   </div>
                 )}
               </>
             ) : section === "login" ? (
-              <SignIn
-                routing="hash"
-                signUpUrl="/register"
-                forceRedirectUrl="/studio"
-              />
+              signedIn ? (
+                <div className="auth-note">
+                  すでにログインしています。秘密の暗号を確認するには投稿スタジオへ進んでください。
+                  <p><Link className="button primary" href="/studio">投稿スタジオへ →</Link></p>
+                </div>
+              ) : (
+                <AuthenticationLogin />
+              )
+            ) : signedIn ? (
+              <div className="auth-note">
+                すでにログインしています。投稿スタジオへ進んでください。
+                <p><Link className="button primary" href="/studio">投稿スタジオへ →</Link></p>
+              </div>
             ) : (
               <>
                 <ol className="registration-steps">
                   <li>学校メール・パスワードを登録</li>
                   <li>メールの確認コードで本人確認</li>
-                  <li>投稿スタジオで参加コードを入力</li>
+                  <li>投稿スタジオでログイン時と同じ秘密の暗号を入力</li>
                 </ol>
-                <SignUp
-                  routing="hash"
-                  signInUrl="/login"
-                  forceRedirectUrl="/studio"
-                />
+                <AuthenticationSignup />
               </>
             )}
             <p>
@@ -358,6 +363,10 @@ function Workspace({
                 </div>
                 {section === "admin" && member.role !== "admin" ? (
                   <p className="empty">管理者権限が必要です。</p>
+                ) : section === "studio" && path[1] === "groups" ? (
+                  <GroupManager request={request} />
+                ) : section === "studio" && path[1] === "new" && path[2] === "news" ? (
+                  <NewsEditor request={request} />
                 ) : path[1] === "new" || path[1] === "edit" ? (
                   <Editor
                     key={path.join("/")}
@@ -367,6 +376,7 @@ function Workspace({
                     request={request}
                     demo={demo}
                     refresh={refresh}
+                    groups={groups}
                   />
                 ) : (
                   <Studio
@@ -390,7 +400,7 @@ function Workspace({
         <div className="footer-top">
           <Link className="brand footer-brand" href="/"><Mark />Data Dreamers</Link>
           <nav className="footer-links" aria-label="フッターナビゲーション">
-            <div><Link href="/about">About</Link><Link href="/about">私たちについて</Link><Link href="/works">成果物</Link></div>
+            <div><Link href="/about">About</Link><Link href="/about">私たちについて</Link><Link href="/groups">グループ紹介</Link><Link href="/works">成果物</Link></div>
             <div><Link href="/articles">Activities</Link><Link href="/articles">活動記事</Link><Link href="/studio">投稿スタジオ</Link></div>
             <div><Link href="/for-new-dreamers">New Students</Link><Link href="/news">お知らせ</Link><Link href="/contact">お問い合わせ</Link><Link href="/login">メンバーログイン</Link></div>
           </nav>
@@ -538,6 +548,7 @@ function WorkItem({ entry: e }: { entry: Entry }) {
       <p>{e.description}</p>
       <Tags entry={e} />
       <p className="author">制作：{e.authorName}</p>
+      {e.groupName && <p className="author">グループ：{e.groupName}</p>}
     </article>
   );
 }
@@ -679,6 +690,7 @@ function Detail({
         <p className="author">
           {e.kind === "works" ? "制作" : "文"}：{e.authorName}
         </p>
+        {e.groupName && <p className="author">グループ：{e.groupName}</p>}
       </div>
       <Cover entry={e} />
       {e.kind === "works" && (
@@ -816,17 +828,18 @@ function JoinOrLogin({
   const [busy, setBusy] = useState(false);
   return (
     <section className="auth-page">
-      <h1>{signedIn ? "参加コードを確認" : "メンバーログイン"}</h1>
+      <h1>{signedIn ? "秘密の暗号を確認" : "メンバーログイン"}</h1>
       {signedIn ? (
         <form
           onSubmit={async (e) => {
             e.preventDefault();
             setBusy(true);
             try {
-              const result = await request("join", {
+              await request("invite/verify", {
                 method: "POST",
                 body: JSON.stringify({ code }),
               });
+              const result = await request("me");
               setCode("");
               onJoin(result.member);
             } catch (e) {
@@ -837,10 +850,10 @@ function JoinOrLogin({
           }}
         >
           <p>
-            学校メールの確認後、共有されたDataDreamers参加コードを入力してください。
+            学校メールの確認後、ログイン時と同じ秘密の暗号を入力してください。
           </p>
           <label>
-            参加コード
+            秘密の暗号
             <input
               type="password"
               value={code}
@@ -956,6 +969,8 @@ function Studio({
           <Link className="button" href="/studio/new/articles">
             ＋ 新しい記事を書く
           </Link>
+          <Link className="button" href="/studio/new/news">＋ お知らせを投稿</Link>
+          <Link className="button" href="/studio/groups">グループ紹介を編集</Link>
           <Link className="button primary" href="/studio/new/works">
             ＋ 成果物を投稿する
           </Link>
@@ -1248,7 +1263,7 @@ function RichTextEditor({
           <input type="file" accept="image/jpeg,image/png,image/webp" onChange={(e) => { void insertImage(e.target.files?.[0]); e.currentTarget.value = ""; }} />
         </label>
       </div>
-      {imageSelected && selectedImage.current && (
+      {imageSelected && (
         <div className="rich-image-tools" aria-label="画像の配置とサイズ">
           <span>選択中の画像</span>
           <button type="button" onClick={() => alignImage("left")}>左</button>
@@ -1293,6 +1308,7 @@ function Editor({
   request,
   demo,
   refresh,
+  groups,
 }: {
   kind: Kind;
   id?: string;
@@ -1300,6 +1316,7 @@ function Editor({
   request: RequestFn;
   demo: boolean;
   refresh: () => Promise<void>;
+  groups: GroupProfile[];
 }) {
   const [entry, setEntry] = useState<Entry>({
     ...emptyEntry(kind),
@@ -1324,7 +1341,7 @@ function Editor({
     }
     void request(kind + "/" + id)
       .then((d) => {
-        setEntry(d.entry);
+        setEntry({ ...d.entry, groupName: d.entry.groupName || "" });
         setLoaded(true);
       })
       .catch((e) => {
@@ -1555,6 +1572,7 @@ function Editor({
                   80,
                 )}
                 {field("category", "カテゴリ", false, 40)}
+                <label className="field" htmlFor="field-groupName"><span>グループ名</span><select id="field-groupName" value={entry.groupName || ""} onChange={(event) => change("groupName", event.target.value)}><option value="">選択してください</option>{groups.map((group) => <option key={group.slug} value={group.name}>{group.name}</option>)}{entry.groupName && !groups.some((group) => group.name === entry.groupName) && <option value={entry.groupName}>{entry.groupName}</option>}</select><span className="hint">グループ紹介ページと記事・成果物を自動で関連付けます。</span></label>
               </section>
             )}
             {(section === "content" || section === "all") && (

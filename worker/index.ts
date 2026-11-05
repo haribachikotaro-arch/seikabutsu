@@ -1,4 +1,3 @@
-import { verifyToken, createClerkClient } from "@clerk/backend";
 import type { D1Database } from "@cloudflare/workers-types";
 import { marked } from "marked";
 import sanitizeHtml from "sanitize-html";
@@ -14,14 +13,12 @@ import {
 export interface Env {
   DB: D1Database;
   SITE_ORIGIN: string;
-  CLERK_SECRET_KEY: string;
-  CLERK_ISSUER: string;
-  SCHOOL_DOMAINS: string;
-  JOIN_CODE_SHA256: string;
+  WORKER_SHARED_SECRET: string;
   MICROCMS_SERVICE: string;
   MICROCMS_API_KEY: string;
   EMBED_ORIGINS: string;
 }
+const NEXT_SERVER_HEADER = "1";
 class ApiError extends Error {
   constructor(
     public status: number,
@@ -104,50 +101,24 @@ async function rate(env: Env, key: string, max = 30) {
     .bind(Date.now() - 60000)
     .run();
 }
-async function identity(req: Request, env: Env) {
-  const token = req.headers.get("Authorization")?.replace(/^Bearer /, "");
-  if (!token) throw new ApiError(401, "ログインが必要です。");
-  let payload;
-  try {
-    payload = await verifyToken(token, {
-      secretKey: env.CLERK_SECRET_KEY,
-      authorizedParties: [env.SITE_ORIGIN],
-    });
-    if (
-      payload.iss !== env.CLERK_ISSUER ||
-      payload.azp !== env.SITE_ORIGIN ||
-      !payload.sub
-    )
-      throw Error();
-  } catch {
-    throw new ApiError(
-      401,
-      "セッションが切れています。別タブで再ログインしてから再試行してください。",
-    );
-  }
-  const user = await createClerkClient({
-    secretKey: env.CLERK_SECRET_KEY,
-  }).users.getUser(payload.sub);
-  const email = user.emailAddresses.find(
-    (e) => e.id === user.primaryEmailAddressId,
-  );
-  const domain = email?.emailAddress.toLowerCase().split("@")[1];
+function assertNextServer(req: Request, env: Env) {
+  const authorization = req.headers.get("Authorization");
   if (
-    email?.verification?.status !== "verified" ||
-    !domain ||
-    !env.SCHOOL_DOMAINS.split(",")
-      .map((s) => s.trim().toLowerCase())
-      .includes(domain)
+    req.headers.get("X-Next-Server") !== NEXT_SERVER_HEADER ||
+    authorization !== `Bearer ${env.WORKER_SHARED_SECRET}`
   )
-    throw new ApiError(
-      403,
-      "確認済みの学校メールが必要です。学校メールの設定を確認してください。",
-    );
+    throw new ApiError(401, "Next.js server authentication is required.");
+}
+async function identity(req: Request, env: Env) {
+  assertNextServer(req, env);
+  const userId = req.headers.get("X-User-Id");
+  if (!userId) throw new ApiError(401, "Next.js user authentication is required.");
+  const role = req.headers.get("X-User-Role");
   return {
-    id: user.id,
-    name:
-      [user.firstName, user.lastName].filter(Boolean).join(" ") ||
-      "DataDreamers メンバー",
+    id: userId,
+    name: req.headers.get("X-User-Name") || userId,
+    role: role === "admin" || role === "editor" ? role : null,
+    inviteVerified: req.headers.get("X-User-Invite-Verified") === "true",
   };
 }
 async function cms(env: Env, path: string, options: RequestInit = {}) {
@@ -233,16 +204,8 @@ async function dispatch(req: Request, env: Env) {
   if (route === "me" && req.method === "GET") return json({ member });
   if (route === "join" && req.method === "POST") {
     if (member) return json({ member });
-    const { code } = (await req.json()) as { code: string };
-    if (
-      typeof code !== "string" ||
-      code.length > 256 ||
-      (await digest(code)) !== env.JOIN_CODE_SHA256
-    )
-      throw new ApiError(
-        403,
-        "参加コードが一致しません。共有されたコードを再確認してください。",
-      );
+    if (!user.inviteVerified)
+      throw new ApiError(403, "site authorization is required.");
     await env.DB.prepare(
       "INSERT INTO members(id,name,role) VALUES(?,?,'editor') ON CONFLICT(id) DO NOTHING",
     )
@@ -530,11 +493,17 @@ const worker = {
       return json({ message: "利用元が一致しません。" }, 403);
     if (!["GET", "OPTIONS"].includes(req.method) && origin !== env.SITE_ORIGIN)
       return json({ message: "利用元が必要です。" }, 403);
+    try {
+      assertNextServer(req, env);
+    } catch (error) {
+      const status = error instanceof ApiError ? error.status : 401;
+      return json({ message: "WorkerはNext.jsサーバーからのリクエストだけを受け付けます。" }, status);
+    }
     const headers = {
       "Access-Control-Allow-Origin": env.SITE_ORIGIN,
       Vary: "Origin",
       "Access-Control-Allow-Methods": "GET,POST,PATCH,DELETE,OPTIONS",
-      "Access-Control-Allow-Headers": "Authorization,Content-Type",
+      "Access-Control-Allow-Headers": "Authorization,Content-Type,X-Next-Server,X-User-Id,X-User-Name,X-User-Role,X-User-Invite-Verified",
       "X-Content-Type-Options": "nosniff",
     };
     if (req.method === "OPTIONS")

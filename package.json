@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start --hostname 127.0.0.1",
     "typecheck": "tsc --noEmit",
+    "invite-code": "node scripts/generate-invite-hash.mjs",
     "test": "tsx --test tests/*.test.ts",
     "worker:dev": "wrangler dev",
     "worker:deploy": "wrangler deploy",

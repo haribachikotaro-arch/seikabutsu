@@ -1,0 +1,45 @@
+{
+  "name": "datadreamers-member-portal",
+  "version": "2.0.0",
+  "private": true,
+  "scripts": {
+		"dev": "next dev --turbopack --hostname localhost --port 3100",
+		"dev:webpack": "next dev --hostname localhost --port 3100",
+    "build": "next build",
+    "start": "next start --hostname localhost --port 3100",
+    "lint": "biome check ./src ./scripts",
+    "format": "biome check --write ./src ./scripts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --config vitest.config.ts",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "invite-code": "node scripts/generate-invite-hash.mjs"
+  },
+  "dependencies": {
+    "@clerk/nextjs": "7.8.0",
+    "@tabler/icons-react": "^3.40.0",
+    "@yamada-ui/react": "^1.7.4",
+    "@yamada-ui/layouts": "1.4.1",
+    "@yamada-ui/typography": "1.1.7",
+    "@yamada-ui/button": "1.0.56",
+    "@yamada-ui/alert": "1.1.10",
+    "@yamada-ui/form-control": "2.1.13",
+    "@yamada-ui/input": "1.0.53",
+    "@yamada-ui/password-input": "1.0.5",
+    "@yamada-ui/modal": "1.4.11",
+    "@yamada-ui/use-disclosure": "1.1.4",
+    "@yamada-ui/providers": "1.4.3",
+    "@yamada-ui/core": "1.17.1",
+    "@yamada-ui/theme-tools": "1.1.16",
+    "next": "15.5.9",
+    "react": "19.1.4",
+    "react-dom": "19.1.4"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.4.8",
+    "@types/node": "22.19.15",
+    "@types/react": "19.1.11",
+    "@types/react-dom": "19.1.9",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}

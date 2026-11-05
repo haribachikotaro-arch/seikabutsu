@@ -1,0 +1,2 @@
+import { scryptSync, timingSafeEqual } from "node:crypto";
+export function verifyInviteCode(code: string, encoded: string) { try { const [prefix, salt, hash, extra] = encoded.split("$"); if (prefix !== "scrypt" || !salt || !hash || extra) return false; const expected = Buffer.from(hash, "base64url"); const actual = scryptSync(code.trim().normalize("NFKC"), Buffer.from(salt, "base64url"), expected.length); return expected.length > 0 && timingSafeEqual(expected, actual); } catch { return false; } }
