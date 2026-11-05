@@ -38,16 +38,18 @@ http://127.0.0.1:3000 を開きます。ルートの `index.html` は従来の�
 
 この作業では外部アカウントの認証情報が提供されていないため、Clerk・Workers・D1・microCMSを実サービスへ接続・デプロイしていません。接続用コードを同梱していますが、実サービスの結合試験は必要です。
 
-1. `.env.example` を `.env.local` にコピーし、Clerkの公開鍵・秘密鍵、WorkersのURL、サイトの正確なOriginを設定します。microCMS APIキーはNext.jsへ設定しません。
-2. Clerkでメール＋パスワード登録、メールOTP確認を有効にし、登録可能な学校メールドメインを制限します。OAuth等の別の認証経路を有効にしないでください。Workersでも確認済みのプライマリ学校メールを毎回検証します。学校ドメインは要件書では未決です。
+1. `.env.example` を `.env.local` にコピーし、Clerkの公開鍵・秘密鍵、WorkersのURL、サイトの正確なOriginを設定します。microCMS中継を使う場合、Next.jsには `MICROCMS_WORKER_URL` と `MICROCMS_WORKER_TOKEN` だけを設定し、Content/Management APIキーは設定しません。
+2. Clerk handles email/password registration and email OTP verification. Next.js checks the verified school email domain and secret code before it sends any authenticated request to the Worker.
 3. `npx wrangler d1 create datadreamers` でD1を作成し、`wrangler.jsonc` のdatabase_idを実値に変更します。`npx wrangler d1 execute datadreamers --remote --file worker/schema.sql` でテーブルを作成します。
-4. `wrangler.jsonc` の `SITE_ORIGIN`、`CLERK_ISSUER`、`MICROCMS_SERVICE`、`EMBED_ORIGINS` を設定します。`EMBED_ORIGINS` はカンマ区切りの正確なHTTPS Originです。Next.jsの `NEXT_PUBLIC_EMBED_ORIGINS` に同じ値を設定します。未指定時、外部作品は別タブのみです。
-5. Workers Secretsへ `CLERK_SECRET_KEY`、`MICROCMS_API_KEY`、`SCHOOL_DOMAINS`、`JOIN_CODE_SHA256` を設定します。参加コードそのものではなくSHA-256ハッシュを設定します。ログに参加コードを出さないでください。
+4. Set `SITE_ORIGIN`, `MICROCMS_SERVICE`, and `EMBED_ORIGINS` in `wrangler.jsonc`. Do not add `CLERK_ISSUER` or any Clerk setting to the Worker.
+5. Clerk authentication is handled only by Next.js. Do not configure Clerk keys, issuer values, or Clerk tokens in the Worker. Set the same random value as `WORKER_SHARED_SECRET` in Next.js and as the Worker Secret `WORKER_SHARED_SECRET`. Store microCMS API keys only as Worker Secrets.
 6. 下記のmicroCMSスキーマを作成します。Content APIのGET・PUT・PATCHとManagement APIの画像アップロードを許可したキーをWorkersだけに設定します。
 7. 最初の管理者は、学校メール確認と参加コードによる登録後、D1の `members` で対象のClerk IDだけを `admin` に更新してください。以後の権限変更は管理画面を利用できます。自分自身の権限変更は拒否します。
 8. 本番用ClerkのFrontend API Originが公開キーから導出できない場合は `CLERK_FRONTEND_ORIGIN` を明示します。ステージング環境でOTP・登録・保存・画像・非公開・期限切れ・CSPを確認してから公開してください。
 
 Workersをローカルで接続確認する場合は `.dev.vars` にSecretsを書き、`npx wrangler d1 execute datadreamers --local --file worker/schema.sql`、`npm run worker:dev` を利用します。`.dev.vars`、`.env.local` はコミットしません。
+
+CMS中継Workerは `GET /healthz` で稼働確認できます。Next.jsのサーバーが `MICROCMS_WORKER_URL` にBearer認証付きでアクセスし、WorkerがmicroCMS Content APIまたはManagement APIへ転送します。ブラウザーからWorkerやCMSのキーへ直接接続しません。中継APIは `/api/v1/...` と `/management/api/v1/...` です。`npm run worker:deploy` でWorkerを更新してからNext.js側を再起動・再デプロイしてください。
 
 ## microCMSスキーマ
 
@@ -57,6 +59,7 @@ Workersをローカルで接続確認する場合は `.dev.vars` にSecretsを�
 | --- | --- | --- |
 | title / slug / description / authorName | テキスト | 基本情報 |
 | clerkUserId / category / imageAlt | テキスト | 投稿者ID、分類、代替テキスト |
+| groups | セレクトフィールド（選択肢6件） | 制作者とは独立したグループ |
 | eyecatch | テキスト | Management APIでアップロードした画像URL |
 | content | リッチエディタ | Workersが許可リストで安全化したHTML |
 | markdown | テキストエリア | 再編集用のMarkdownソース |
@@ -66,6 +69,14 @@ Workersをローカルで接続確認する場合は `.dev.vars` にSecretsを�
 | visibility | テキスト | `published` / `draft` |
 | modifiedAt / firstPublishedAt | テキスト | ISO日時。未公開時のfirstPublishedAtは空文字 |
 | version | 数字 | 楽観的ロック用バージョン |
+
+`articles` と `works` の両方にフィールドID `groups`（セレクトフィールド）を追加し、選択肢を `AI基盤`、`AIプロダクト`、`行政班`、`金融班`、`スポーツ班`、`コンペ班` に設定してください。サイトは選択値を配列で保存します。グループ紹介ページの内容は別途、リスト形式API `groups` に保存します。
+
+グループ紹介は `AI基盤`、`AIプロダクト`、`行政班`、`金融班`、`スポーツ班`、`コンペ班` の6つです。同じ `groups` APIに次のフィールドも追加します（すべて任意）。`catchphrase`（テキスト）、`slug`（テキスト）、`image`（テキスト。アップロード済み画像URL）、`overview` と `activities`（複数行テキスト）、`members-grade-1` から `members-grade-4`（数値）。CMS上に以前の英語名のコンテンツがある場合は、対応する6グループに紐付けて表示します。投稿スタジオの「グループ紹介を編集」から、説明・画像・学年人数を更新できます。投稿ページのグループ欄もこの6つから選択します。
+
+現行の `news` APIは、確認時点でテキストフィールド `link` のみでした。お知らせ投稿ページはこのスキーマに合わせてURLを投稿し、`/news` に一覧表示します。タイトルや本文もサイトから投稿したい場合は、`news` にテキストフィールド `title` とリッチエディタ（または複数行テキスト）`body` を追加し、同じ名前をフォーム/APIへ追加してください。CMSのContent APIキーには `news` の取得・作成権限も付与します。
+
+Workerに設定するContent APIキーは、`articles`・`works` の取得・作成・更新、`groups` の取得・作成・更新、`news` の取得・作成を許可してください。画像アップロードには別途Management APIキーを使います。
 
 **公開状態の実装上の判断:** CMSのネイティブな公開状態とは別に `visibility` とD1の `posts.status` を使用しています。CMS内のデータはサーバーが読み取れる状態で保存し、一般公開APIは両方がpublishedのものだけを返します。CMSキーを第三者に共有すると下書きにもアクセスできるため、必ずWorkers限定にしてください。CMS管理画面での直接編集・公開切替はD1と同期しません。運用上の編集は投稿スタジオを利用してください。
 
