@@ -16,7 +16,6 @@ export interface Env {
   WORKER_SHARED_SECRET: string;
   MICROCMS_SERVICE: string;
   MICROCMS_API_KEY: string;
-  EMBED_ORIGINS: string;
 }
 const NEXT_SERVER_HEADER = "1";
 class ApiError extends Error {
@@ -138,7 +137,8 @@ async function cms(env: Env, path: string, options: RequestInit = {}) {
       502,
       "CMSへの保存・取得に失敗しました。入力を保持したまま再試行してください。",
     );
-  return (await res.json()) as any;
+  const responseText = await res.text();
+  return responseText ? (JSON.parse(responseText) as any) : null;
 }
 function decode(raw: any, kind: Kind): Entry {
   return {
@@ -191,7 +191,7 @@ async function dispatch(req: Request, env: Env) {
     }
     return json({
       entries: parts[1] ? visible.filter((e) => e.kind === parts[1]) : visible,
-      allowlist: env.EMBED_ORIGINS.split(",").map((origin) => origin.trim().replace(/\/$/, "")).filter(Boolean),
+      allowlist: [],
     });
   }
   const user = await identity(req, env);
@@ -226,11 +226,9 @@ async function dispatch(req: Request, env: Env) {
     );
   if (route === "mine" && req.method === "GET")
     return json({
-      entries: await listEntries(env, "owner=? AND version>0", [member.id]),
+      entries: await listEntries(env, "version>0"),
     });
   if (route === "admin" && req.method === "GET") {
-    if (member.role !== "admin")
-      throw new ApiError(403, "管理者権限が必要です。");
     return json({
       entries: await listEntries(env, "version>0"),
       members: (await env.DB.prepare("SELECT id,name,role FROM members").all())
@@ -238,7 +236,7 @@ async function dispatch(req: Request, env: Env) {
     });
   }
   if (parts[0] === "members" && req.method === "PATCH") {
-    if (member.role !== "admin" || parts[1] === member.id)
+    if (parts[1] === member.id)
       throw new ApiError(403, "この権限は変更できません。");
     const { role } = (await req.json()) as { role: string };
     if (!["editor", "admin"].includes(role))
@@ -301,12 +299,14 @@ async function dispatch(req: Request, env: Env) {
     : null;
   if (id && !index) throw new ApiError(404, "投稿が見つかりません。");
   if (req.method === "DELETE" && id) {
-    if (member.role !== "admin") throw new ApiError(403, "投稿の削除は管理者のみ実行できます。");
-    await env.DB.prepare("DELETE FROM posts WHERE id=? AND kind=?").bind(id, kind).run();
+    await cms(env, `${kind}/${encodeURIComponent(id)}`, { method: "DELETE" });
+    await env.DB.batch([
+      env.DB.prepare("DELETE FROM posts WHERE id=? AND kind=?").bind(id, kind),
+      env.DB.prepare("DELETE FROM slugs WHERE post_id=? AND kind=?").bind(id, kind),
+      env.DB.prepare("DELETE FROM requests WHERE post_id=?").bind(id),
+    ]);
     return json({ ok: true });
   }
-  if (index && index.owner !== member.id && member.role !== "admin")
-    throw new ApiError(403, "他のメンバーの投稿は編集できません。");
   if (req.method === "GET" && id)
     return json({ entry: await getEntry(env, kind, id) });
   if (
@@ -333,12 +333,7 @@ async function dispatch(req: Request, env: Env) {
     throw new ApiError(422, "アップロードした画像を指定してください。", {
       eyecatch: "microCMSへ画像をアップロードしてください。",
     });
-  if (
-    index?.status === "published" &&
-    entry.status === "draft" &&
-    member.role !== "admin"
-  )
-    throw new ApiError(403, "非公開化には管理者権限が必要です。");
+
   if (!/^[a-f0-9-]{36}$/.test(input.requestId))
     throw new ApiError(422, "requestIdが不正です。");
   const key = member.id + ":" + input.requestId;
@@ -435,11 +430,7 @@ async function dispatch(req: Request, env: Env) {
   }
   const previous = index ? await getEntry(env, kind, postId) : null;
   const now = new Date().toISOString();
-  const allowed =
-    entry.displayMode === "iframe" &&
-    env.EMBED_ORIGINS.split(",").includes(
-      new URL(entry.appUrl || "https://invalid.invalid").origin,
-    );
+  const allowed = entry.displayMode === "iframe" && (entry.appUrl.startsWith("/demos/") || publicUrl(entry.appUrl));
   const next: Entry = {
     ...entry,
     id: postId,

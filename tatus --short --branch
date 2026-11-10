@@ -1,0 +1,9 @@
+ .env.example                   |  1 [31m-[m
+ README.md                      |  2 [32m+[m[31m-[m
+ next.config.ts                 | 11 [32m+[m[31m-------[m
+ src/app/api/[...path]/route.ts | 30 [32m++++++[m[31m----------------[m
+ src/components/site.tsx        | 57 [32m+++++++++++[m[31m-------------------------------[m
+ src/lib/model.ts               |  5 [32m+++[m[31m-[m
+ worker/index.ts                | 35 [32m++++++++++[m[31m----------------[m
+ wrangler.jsonc                 |  3 [32m+[m[31m--[m
+ 8 files changed, 42 insertions(+), 102 deletions(-)
