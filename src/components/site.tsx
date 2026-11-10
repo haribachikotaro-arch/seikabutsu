@@ -19,6 +19,7 @@ import {
   emptyEntry,
   validateEntry,
   imageError,
+  publicUrl,
 } from "@/lib/model";
 type RequestFn = (path: string, options?: RequestInit) => Promise<any>;
 const date = (s: string) =>
@@ -32,20 +33,10 @@ const date = (s: string) =>
         .replaceAll("/", ".")
     : "—";
 const arrow = <span aria-hidden="true">↗</span>;
-function canEmbed(entry: Entry, allowlist: string[] = []) {
-  // An administrator's allowlist decision is the source of truth for the in-page launcher.
-  // Older posts may still have displayMode="linkOnly" from before the allowlist UI existed.
+function canEmbed(entry: Entry) {
   if (!entry.appUrl) return false;
-  if (entry.appUrl.startsWith("/demos/")) return true;
-  try {
-    const origins = [...allowlist, ...(process.env.NEXT_PUBLIC_EMBED_ORIGINS || "")
-      .split(",")
-      .map((origin) => origin.trim().replace(/\/$/, ""))
-      .filter(Boolean)];
-    return origins.includes(new URL(entry.appUrl).origin);
-  } catch {
-    return false;
-  }
+  if (entry.appUrl.startsWith("/demos/")) return entry.displayMode === "iframe";
+  return entry.displayMode === "iframe" && publicUrl(entry.appUrl);
 }
 function RichBody({ content }: { content: string }) {
   if (!/<(p|h[1-5]|figure|img|ul|ol|blockquote|strong|em|br)\b/i.test(content))
@@ -117,7 +108,6 @@ function Workspace({
 }) {
   const router = useRouter();
   const [entries, setEntries] = useState<Entry[]>(demo ? seed : []);
-  const [allowlist, setAllowlist] = useState<string[]>([]);
   const [groups, setGroups] = useState<GroupProfile[]>(GROUP_SEEDS);
   const [newsItems, setNewsItems] = useState<Record<string, any>[]>([]);
   const [member, setMember] = useState<Member | null>(null);
@@ -154,7 +144,6 @@ function Workspace({
     try {
       const result = await request("public");
       setEntries(result.entries);
-      setAllowlist(result.allowlist || []);
       setGroups(result.groups || GROUP_SEEDS);
       setNewsItems(result.news || []);
       setError("");
@@ -259,7 +248,6 @@ function Workspace({
               entry={published.find(
                 (e) => e.kind === section && e.slug === path[1],
               )}
-              allowlist={allowlist}
             />
           ) : (
             <Listing
@@ -337,17 +325,15 @@ function Workspace({
                   >
                     投稿スタジオ
                   </Link>
-                  {member.role === "admin" && (
-                    <Link
+                  <Link
                       href="/admin"
                       aria-current={section === "admin" ? "page" : undefined}
                     >
                       管理画面
                     </Link>
-                  )}
                   <span>
                     {member.name} ·{" "}
-                    {member.role === "admin" ? "管理者" : "投稿者"}
+                    投稿者・管理者
                   </span>
                   {demo && (
                     <button
@@ -361,9 +347,7 @@ function Workspace({
                     </button>
                   )}
                 </div>
-                {section === "admin" && member.role !== "admin" ? (
-                  <p className="empty">管理者権限が必要です。</p>
-                ) : section === "studio" && path[1] === "groups" ? (
+                { section === "studio" && path[1] === "groups" ? (
                   <GroupManager request={request} />
                 ) : section === "studio" && path[1] === "new" && path[2] === "news" ? (
                   <NewsEditor request={request} />
@@ -382,7 +366,7 @@ function Workspace({
                   <Studio
                     member={member}
                     request={request}
-                    admin={section === "admin"}
+                    admin={true}
                     refresh={refresh}
                   />
                 )}
@@ -655,11 +639,9 @@ function Listing({ kind, entries }: { kind: Kind; entries: Entry[] }) {
 function Detail({
   entry: e,
   preview = false,
-  allowlist = [],
 }: {
   entry?: Entry;
   preview?: boolean;
-  allowlist?: string[];
 }) {
   if (!e)
     return (
@@ -712,11 +694,11 @@ function Detail({
       <div className="prose">
         <RichBody content={e.content} />
       </div>
-      {e.kind === "works" && e.appUrl && <Launch entry={e} allowlist={allowlist} />}
+      {e.kind === "works" && e.appUrl && <Launch entry={e} />}
     </article>
   );
 }
-function Launch({ entry: e, allowlist = [] }: { entry: Entry; allowlist?: string[] }) {
+function Launch({ entry: e }: { entry: Entry }) {
   const [active, setActive] = useState(false);
   const [message, setMessage] = useState("");
   const [frameHeight, setFrameHeight] = useState(560);
@@ -745,7 +727,7 @@ function Launch({ entry: e, allowlist = [] }: { entry: Entry; allowlist?: string
       </div>
       <p>外部アプリの稼働状況によっては、表示に時間がかかることがあります。</p>
       <div className="actions">
-        {canEmbed(e, allowlist) && (
+        {canEmbed(e) && (
           <button
             className="button primary"
             onClick={() => {
@@ -794,7 +776,7 @@ function Launch({ entry: e, allowlist = [] }: { entry: Entry; allowlist?: string
           <iframe
             src={e.appUrl}
             title={e.title + "の実行画面"}
-            sandbox={canEmbed(e, allowlist)
+            sandbox={canEmbed(e)
               ? "allow-scripts allow-forms allow-popups allow-downloads allow-same-origin"
               : "allow-scripts allow-forms allow-popups"}
             allowFullScreen
@@ -898,8 +880,6 @@ function Studio({
 }) {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
-  const [allowlist, setAllowlist] = useState<string[]>([]);
-  const [originInput, setOriginInput] = useState("");
   const [filter, setFilter] = useState("all");
   const [query, setQuery] = useState("");
   const [message, setMessage] = useState("");
@@ -911,7 +891,6 @@ function Studio({
         .then((d) => {
           setEntries(d.entries);
           setMembers(d.members || []);
-          setAllowlist(d.allowlist || []);
         })
         .catch((e) => setMessage(e.message)),
     [request, admin],
@@ -951,11 +930,6 @@ function Studio({
     try { await request(`${e.kind}/${e.id}`, { method: "DELETE" }); setMessage("投稿を削除しました。"); await load(); await refresh(); }
     catch (e) { setMessage((e as Error).message); } finally { setBusy(false); }
   }
-  async function saveAllowlist(next: string[]) {
-    setBusy(true);
-    try { const d = await request("allowlist", { method: "PATCH", body: JSON.stringify({ origins: next }) }); setAllowlist(d.allowlist); setMessage("許可リストを更新しました。"); }
-    catch (e) { setMessage((e as Error).message); } finally { setBusy(false); }
-  }
   return (
     <>
       <div className="studio-heading">
@@ -990,7 +964,6 @@ function Studio({
           >
             権限管理
           </button>
-          <button aria-pressed={tab === "allowlist"} onClick={() => setTab("allowlist")}>埋め込み許可リスト</button>
         </div>
       )}
       {message && (
@@ -998,9 +971,7 @@ function Studio({
           {message}
         </p>
       )}
-      {tab === "allowlist" ? (
-        <section className="allowlist-panel"><h2>埋め込み許可リスト</h2><p className="editor-intro">作品をページ内に表示できるHTTPSドメインを管理します。</p><div className="allowlist-add"><input value={originInput} onChange={e => setOriginInput(e.target.value)} placeholder="https://example.com" /><button className="button" disabled={busy || !originInput.trim()} onClick={() => { const v=originInput.trim().replace(/\/$/, ""); if (!allowlist.includes(v)) void saveAllowlist([...allowlist, v]); setOriginInput(""); }}>追加</button></div><ul className="allowlist-list">{allowlist.map(origin => <li key={origin}><code>{origin}</code><button className="text-button" disabled={busy} onClick={() => void saveAllowlist(allowlist.filter(v => v !== origin))}>削除</button></li>)}</ul></section>
-      ) : tab === "members" ? (
+      {tab === "members" ? (
         <div className="table-scroll">
           <table>
             <thead>
@@ -1686,7 +1657,7 @@ function Editor({
                         <option value="iframe">ページ内で起動 ＋ 別タブ</option>
                       </select>
                       <span className="hint">
-                        ページ内表示は、管理者が許可した公開先に限ります。
+                        公開HTTPS URLは許可リストへの登録なしでページ内表示できます。表示されない場合は、公開先がiframe表示を許可していない可能性があります。
                       </span>
                     </label>
                   </>

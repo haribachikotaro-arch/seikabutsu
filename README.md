@@ -41,7 +41,7 @@ http://127.0.0.1:3000 を開きます。ルートの `index.html` は従来の�
 1. `.env.example` を `.env.local` にコピーし、Clerkの公開鍵・秘密鍵、WorkersのURL、サイトの正確なOriginを設定します。microCMS中継を使う場合、Next.jsには `MICROCMS_WORKER_URL` と `MICROCMS_WORKER_TOKEN` だけを設定し、Content/Management APIキーは設定しません。
 2. Clerk handles email/password registration and email OTP verification. Next.js checks the verified school email domain and secret code before it sends any authenticated request to the Worker.
 3. `npx wrangler d1 create datadreamers` でD1を作成し、`wrangler.jsonc` のdatabase_idを実値に変更します。`npx wrangler d1 execute datadreamers --remote --file worker/schema.sql` でテーブルを作成します。
-4. Set `SITE_ORIGIN`, `MICROCMS_SERVICE`, and `EMBED_ORIGINS` in `wrangler.jsonc`. Do not add `CLERK_ISSUER` or any Clerk setting to the Worker.
+4. Set `SITE_ORIGIN` and `MICROCMS_SERVICE` in `wrangler.jsonc`. `EMBED_ORIGINS` is no longer required because public HTTPS URLs can be embedded without an allowlist. Do not add `CLERK_ISSUER` or any Clerk setting to the Worker.
 5. Clerk authentication is handled only by Next.js. Do not configure Clerk keys, issuer values, or Clerk tokens in the Worker. Set the same random value as `WORKER_SHARED_SECRET` in Next.js and as the Worker Secret `WORKER_SHARED_SECRET`. Store microCMS API keys only as Worker Secrets.
 6. 下記のmicroCMSスキーマを作成します。Content APIのGET・PUT・PATCHとManagement APIの画像アップロードを許可したキーをWorkersだけに設定します。
 7. 最初の管理者は、学校メール確認と参加コードによる登録後、D1の `members` で対象のClerk IDだけを `admin` に更新してください。以後の権限変更は管理画面を利用できます。自分自身の権限変更は拒否します。

@@ -450,15 +450,13 @@ async function handleMicroCms(req: NextRequest, path: string[], route: string) {
   }
   if (route === "mine" && req.method === "GET") {
     const [works, articles] = await Promise.all([cmsEntries("works", data), cmsEntries("articles", data)]);
-    return NextResponse.json({ entries: [...works, ...articles].filter((e) => e.clerkUserId === member.id) });
+    return NextResponse.json({ entries: [...works, ...articles] });
   }
   if (route === "admin" && req.method === "GET") {
-    if (member.role !== "admin") return fail("管理者権限が必要です。", 403);
     const [works, articles] = await Promise.all([cmsEntries("works", data), cmsEntries("articles", data)]);
     return NextResponse.json({ entries: [...works, ...articles], members: data.members, allowlist: data.allowlist || [] });
   }
   if (route === "allowlist" && req.method === "PATCH") {
-    if (member.role !== "admin") return fail("管理者権限が必要です。", 403);
     const body = await req.json();
     const origins: string[] = Array.isArray(body.origins) ? body.origins.map((v: unknown) => String(v).trim().replace(/\/$/, "")) : [];
     if (origins.some((v: string) => !/^https:\/\/[^/]+$/.test(v))) return fail("HTTPSのOriginを入力してください。", 422);
@@ -484,7 +482,6 @@ async function handleMicroCms(req: NextRequest, path: string[], route: string) {
     catch { return fail("投稿が見つからないか、microCMS APIキーに下書き取得権限がありません。", 404); }
   }
   if (req.method === "DELETE") {
-    if (member.role !== "admin") return fail("投稿の削除は管理者のみ実行できます。", 403);
     if (!existing) return fail("投稿が見つかりません。", 404);
     await cmsRequest(`${kind}/${encodeURIComponent(path[1])}`, { method: "DELETE" });
     return NextResponse.json({ ok: true });
@@ -498,10 +495,10 @@ async function handleMicroCms(req: NextRequest, path: string[], route: string) {
   if (req.method === "PATCH" && !existing) return fail("投稿が見つかりません。", 404);
   const input = await req.json(); const entry = { ...input.entry, kind } as Entry;
   if (existing && existing.clerkUserId !== "microcms" && !editable(existing, member)) return fail("他のメンバーの投稿は編集できません。", 403);
-  if (existing && existing.clerkUserId === "microcms" && member.role !== "admin") return fail("管理者のみ既存のmicroCMS投稿を編集できます。", 403);
+
   if (!/^[a-f0-9-]{36}$/.test(input.requestId || "")) return fail("requestIdが不正です。");
   if (existing && existing.clerkUserId !== "microcms" && !editable(existing, member)) return fail("他のメンバーの投稿は編集できません。", 403);
-  if (!existing && member.role !== "admin") { entry.authorName = member.name; }
+
   if (!existing) entry.clerkUserId = member.id;
   const fields = validateEntry(entry, entry.status === "published", true);
   if (Object.keys(fields).length) return fail("入力内容を確認してください。", 422, fields);
@@ -517,7 +514,7 @@ async function handleMicroCms(req: NextRequest, path: string[], route: string) {
         const sameContent = kind === "works"
           ? duplicate?.["public-url"] === entry.appUrl
           : duplicate?.title === entry.title;
-        if (member.role === "admin" && duplicate && !duplicate.publishedAt && sameContent) {
+        if (duplicate && !duplicate.publishedAt && sameContent) {
           existing = cmsEntry(duplicate, kind, data.cmsAuthors?.[duplicate.id] || null);
           saved = await cmsRequest(`${kind}/${encodeURIComponent(existing.id)}?status=draft`, { method: "PATCH", body: JSON.stringify(body) });
           if (entry.status === "published") await cmsPublishDraft(kind, existing.id);
@@ -671,10 +668,9 @@ async function handle(
       );
     if (route === "mine" && req.method === "GET")
       return NextResponse.json({
-        entries: data.entries.filter((e) => e.clerkUserId === member.id),
+        entries: data.entries,
       });
     if (route === "admin" && req.method === "GET") {
-      if (member.role !== "admin") return fail("管理者権限が必要です。", 403);
       return NextResponse.json({
         entries: data.entries,
         members: data.members,
@@ -682,7 +678,6 @@ async function handle(
       });
     }
     if (route === "allowlist" && req.method === "PATCH") {
-      if (member.role !== "admin") return fail("管理者権限が必要です。", 403);
       const body = await req.json();
       const origins = Array.isArray(body.origins) ? body.origins : [];
       const normalized: string[] = origins.map((v: unknown) => String(v).trim().replace(/\/$/, ""));
@@ -692,7 +687,7 @@ async function handle(
       return NextResponse.json({ allowlist: data.allowlist });
     }
     if (path[0] === "members" && req.method === "PATCH") {
-      if (member.role !== "admin" || path[1] === member.id)
+      if (path[1] === member.id)
         return fail("この権限は変更できません。", 403);
       const { role } = await req.json();
       if (!["editor", "admin"].includes(role)) return fail("権限が不正です。");
@@ -728,7 +723,6 @@ async function handle(
     );
     if (req.method === "DELETE") {
       if (!existing) return fail("投稿が見つかりません。", 404);
-      if (member.role !== "admin") return fail("投稿の削除は管理者のみ実行できます。", 403);
       data.entries.splice(data.entries.indexOf(existing), 1);
       await commit();
       return NextResponse.json({ ok: true });
@@ -769,12 +763,7 @@ async function handle(
         "他の更新があります。入力をコピーしてからページを再読込し、変更内容を確認してください。",
         409,
       );
-    if (
-      existing?.status === "published" &&
-      entry.status === "draft" &&
-      member.role !== "admin"
-    )
-      return fail("公開済み投稿の非公開化には管理者権限が必要です。", 403);
+
     if (!["published", "draft"].includes(entry.status))
       return fail("公開状態が不正です。");
     const fields = validateEntry(entry, entry.status === "published", true);
@@ -804,10 +793,7 @@ async function handle(
           ? existing?.publishedAt || now
           : existing?.publishedAt || "",
       version: (existing?.version || 0) + 1,
-      embedStatus:
-        entry.displayMode === "iframe" && (entry.appUrl.startsWith("/demos/") || (() => { try { return (data.allowlist || []).includes(new URL(entry.appUrl).origin); } catch { return false; } })())
-          ? "allowed"
-          : "linkOnly",
+      embedStatus: entry.displayMode === "iframe" ? "allowed" : "linkOnly",
     };
     if (existing) data.entries[data.entries.indexOf(existing)] = next;
     else data.entries.unshift(next);

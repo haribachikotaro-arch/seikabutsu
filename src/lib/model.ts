@@ -162,7 +162,10 @@ export function validateEntry(
   return errors;
 }
 export function editable(entry: Entry, member: Member) {
-  return member.role === "admin" || entry.clerkUserId === member.id;
+  // Members and administrators share the same editing permissions.  Keep the
+  // role field for display/backwards compatibility, but authorization is based
+  // on having completed site authentication.
+  return Boolean(member);
 }
 export function imageError(file: { size: number; type: string }) {
   return file.size > 5 * 1024 * 1024
